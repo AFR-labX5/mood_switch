@@ -44,7 +44,7 @@
   }
   button:active { transform: scale(0.95); }
   .blue { background-color: #007bff; color: white; } /* Positive */
-  .brown { background-color: #5C4033; color: white; } /* Angry */
+  .brown { background-color: #5C4033; color: white; } /* Angry/Negative */
   .yellow { background-color: #FFC107; color: black; } /* Neutral */
   .reset { background-color: #6c757d; color: white; } /* Reset Timer & Log */
   #log {
@@ -67,7 +67,7 @@
 
   <div class="buttons">
     <button class="blue" onclick="setMood('positive')">Positive</button>
-    <button class="brown" onclick="setMood('negative')">Angry</button>
+    <button class="brown" onclick="setMood('negative')">Angry/Negative</button>
     <button class="yellow" onclick="setMood('neutral')">Neutral</button>
     <button class="reset" onclick="resetAll()">Reset Timer & Log</button>
   </div>
@@ -78,7 +78,7 @@
     <h2>Cumulative Time</h2>
     <ul>
       <li id="positiveTime">Positive: 00:00</li>
-      <li id="negativeTime">Angry: 00:00</li>
+      <li id="negativeTime">Angry/Negative: 00:00</li>
       <li id="neutralTime">Neutral: 00:00</li>
     </ul>
   </div>
@@ -119,7 +119,7 @@ function setMood(mood) {
   const colors = { positive:'#007bff', negative:'#5C4033', neutral:'#FFC107' };
   document.body.style.backgroundColor = colors[mood];
 
-  const texts = { positive:'Positive 😊', negative:'Angry ⚡', neutral:'Neutral ☀️' };
+  const texts = { positive:'Positive 😊', negative:'Angry/Negative ⚡', neutral:'Neutral ☀️' };
   document.getElementById('moodText').textContent = texts[mood];
 
   document.getElementById('moodImage').src = moodImages[mood];
@@ -177,7 +177,7 @@ function renderLog() {
 
 function renderCumulative() {
   document.getElementById('positiveTime').textContent = `Positive: ${formatTime(cumulativeTime.positive)}`;
-  document.getElementById('negativeTime').textContent = `Angry: ${formatTime(cumulativeTime.negative)}`;
+  document.getElementById('negativeTime').textContent = `Angry/Negative: ${formatTime(cumulativeTime.negative)}`;
   document.getElementById('neutralTime').textContent = `Neutral: ${formatTime(cumulativeTime.neutral)}`;
 }
 
@@ -202,3 +202,4 @@ window.addEventListener('beforeunload', () => {
 </script>
 </body>
 </html>
+
