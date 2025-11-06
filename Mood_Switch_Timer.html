@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Mood Switch – Persistent Timer</title>
+<title>Mood Switch – Counters & Histograms</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
   body {
     display: flex;
@@ -32,7 +33,7 @@
     gap: 20px;
     flex-wrap: wrap;
     justify-content: center;
-    margin-bottom: 30px;
+    margin-bottom: 20px;
   }
   button {
     padding: 20px 50px;
@@ -49,39 +50,53 @@
   .reset { background-color: #6c757d; color: white; }   /* Reset */
   #log {
     width: 100%;
-    max-width: 400px;
+    max-width: 500px;
     text-align: left;
     background: rgba(0,0,0,0.2);
     padding: 15px;
     border-radius: 10px;
-    max-height: 300px;
+    max-height: 200px;
     overflow-y: auto;
+    margin-bottom: 20px;
   }
   #log h2 { margin-top: 0; font-size: 1.2rem; }
+  canvas { max-width: 500px; margin-bottom: 30px; background: rgba(255,255,255,0.1); border-radius: 10px; padding: 10px; }
 </style>
 </head>
 <body>
-  <h1 id="moodText">Choose Your Mood</h1>
-  <img id="moodImage" src="" alt="Mood Image">
-  <div id="timer">00:00</div>
+<h1 id="moodText">Choose Your Mood</h1>
+<img id="moodImage" src="" alt="Mood Image">
+<div id="timer">00:00</div>
 
-  <div class="buttons">
-    <button class="blue" onclick="setMood('positive')">Positive</button>
-    <button class="brown" onclick="setMood('negative')">Angry/Negative</button>
-    <button class="yellow" onclick="setMood('neutral')">Neutral</button>
-    <button class="reset" onclick="resetAll()">Reset Timer & Log</button>
-  </div>
+<div class="buttons">
+  <button class="blue" onclick="setMood('positive')">Positive</button>
+  <button class="brown" onclick="setMood('negative')">Angry/Negative</button>
+  <button class="yellow" onclick="setMood('neutral')">Neutral</button>
+  <button class="reset" onclick="resetAll()">Reset Timer & Log</button>
+</div>
 
-  <div id="log">
-    <h2>Mood Log (last 10)</h2>
-    <ul id="logList"></ul>
-    <h2>Cumulative Time</h2>
-    <ul>
-      <li id="positiveTime">Positive: 00:00</li>
-      <li id="negativeTime">Angry/Negative: 00:00</li>
-      <li id="neutralTime">Neutral: 00:00</li>
-    </ul>
-  </div>
+<div id="log">
+  <h2>Mood Log (last 10)</h2>
+  <ul id="logList"></ul>
+  <h2>Cumulative Time</h2>
+  <ul>
+    <li id="positiveTime">Positive: 00:00</li>
+    <li id="negativeTime">Angry/Negative: 00:00</li>
+    <li id="neutralTime">Neutral: 00:00</li>
+  </ul>
+  <h2>Button Press Count</h2>
+  <ul>
+    <li id="positiveCount">Positive: 0</li>
+    <li id="negativeCount">Angry/Negative: 0</li>
+    <li id="neutralCount">Neutral: 0</li>
+  </ul>
+</div>
+
+<h2>Frequency Histogram</h2>
+<canvas id="freqChart"></canvas>
+
+<h2>Duration Histogram</h2>
+<canvas id="durationChart"></canvas>
 
 <script>
 let currentMood = null;
@@ -94,40 +109,42 @@ const moodImages = {
   neutral: 'https://images.alphacoders.com/699/thumb-1920-699582.jpg'
 };
 
+// Load log, cumulative time, and counters
 let moodLog = JSON.parse(localStorage.getItem('moodLog')) || [];
-let cumulativeTime = JSON.parse(localStorage.getItem('cumulativeTime')) || {
-  positive: 0,
-  negative: 0,
-  neutral: 0
-};
+let cumulativeTime = JSON.parse(localStorage.getItem('cumulativeTime')) || { positive:0, negative:0, neutral:0 };
+let moodCount = JSON.parse(localStorage.getItem('moodCount')) || { positive:0, negative:0, neutral:0 };
 
-// Restore previous state on load
+// Restore previous mood
 window.onload = () => {
   const savedMood = localStorage.getItem('currentMood');
   const savedStart = localStorage.getItem('moodStartTime');
-
   if (savedMood && savedStart) {
     currentMood = savedMood;
-    const elapsed = Math.floor((Date.now() - parseInt(savedStart)) / 1000);
-    seconds = elapsed;
+    seconds = Math.floor((Date.now() - parseInt(savedStart)) / 1000);
     updateMoodAppearance(savedMood);
     startTimer();
   }
-  renderLog();
-  renderCumulative();
+  renderAll();
 };
 
+// -------------------- Mood Functions --------------------
 function setMood(mood) {
-  if (currentMood) recordCurrentMood();
+  if(currentMood) recordCurrentMood();
 
+  // Update current mood
   currentMood = mood;
   localStorage.setItem('currentMood', mood);
   localStorage.setItem('moodStartTime', Date.now().toString());
+
+  // Update button press counter
+  moodCount[mood]++;
+  localStorage.setItem('moodCount', JSON.stringify(moodCount));
 
   updateMoodAppearance(mood);
 
   seconds = 0;
   startTimer();
+  renderAll();
 }
 
 function updateMoodAppearance(mood) {
@@ -139,7 +156,7 @@ function updateMoodAppearance(mood) {
 }
 
 function startTimer() {
-  if (timerInterval) clearInterval(timerInterval);
+  if(timerInterval) clearInterval(timerInterval);
   timerInterval = setInterval(() => {
     const start = parseInt(localStorage.getItem('moodStartTime'));
     seconds = Math.floor((Date.now() - start) / 1000);
@@ -152,39 +169,41 @@ function startTimer() {
 function recordCurrentMood() {
   const start = parseInt(localStorage.getItem('moodStartTime'));
   const duration = Math.floor((Date.now() - start) / 1000);
-
-  moodLog.push({
-    mood: currentMood,
-    duration,
-    timestamp: new Date().toLocaleString()
-  });
+  moodLog.push({ mood: currentMood, duration, timestamp: new Date().toLocaleString() });
   cumulativeTime[currentMood] += duration;
-
-  saveData();
+  saveAll();
 }
 
+// -------------------- Reset --------------------
 function resetAll() {
-  if (timerInterval) clearInterval(timerInterval);
+  if(timerInterval) clearInterval(timerInterval);
   seconds = 0;
-  document.getElementById('timer').textContent = "00:00";
   currentMood = null;
+  document.getElementById('timer').textContent = "00:00";
   document.getElementById('moodText').textContent = "Choose Your Mood";
   document.getElementById('moodImage').src = "";
   document.body.style.backgroundColor = "";
 
   moodLog = [];
-  cumulativeTime = { positive: 0, negative: 0, neutral: 0 };
+  cumulativeTime = { positive:0, negative:0, neutral:0 };
+  moodCount = { positive:0, negative:0, neutral:0 };
   localStorage.clear();
-
-  renderLog();
-  renderCumulative();
+  renderAll();
 }
 
-function saveData() {
+// -------------------- Render & Save --------------------
+function saveAll() {
   localStorage.setItem('moodLog', JSON.stringify(moodLog));
   localStorage.setItem('cumulativeTime', JSON.stringify(cumulativeTime));
+  localStorage.setItem('moodCount', JSON.stringify(moodCount));
+  renderAll();
+}
+
+function renderAll() {
   renderLog();
   renderCumulative();
+  renderCount();
+  renderCharts();
 }
 
 function renderLog() {
@@ -205,15 +224,64 @@ function renderCumulative() {
   document.getElementById('neutralTime').textContent = `Neutral: ${formatTime(cumulativeTime.neutral)}`;
 }
 
+function renderCount() {
+  document.getElementById('positiveCount').textContent = `Positive: ${moodCount.positive}`;
+  document.getElementById('negativeCount').textContent = `Angry/Negative: ${moodCount.negative}`;
+  document.getElementById('neutralCount').textContent = `Neutral: ${moodCount.neutral}`;
+}
+
 function formatTime(seconds) {
-  const mins = String(Math.floor(seconds / 60)).padStart(2, '0');
-  const secs = String(seconds % 60).padStart(2, '0');
+  const mins = String(Math.floor(seconds / 60)).padStart(2,'0');
+  const secs = String(seconds % 60).padStart(2,'0');
   return `${mins}:${secs}`;
 }
 
-// Save mood data when leaving the page
+// -------------------- Charts --------------------
+let freqChart, durationChart;
+function renderCharts() {
+  const labels = ['Positive', 'Angry/Negative', 'Neutral'];
+  const freqData = [moodCount.positive, moodCount.negative, moodCount.neutral];
+  const durationData = [
+    cumulativeTime.positive,
+    cumulativeTime.negative,
+    cumulativeTime.neutral
+  ].map(s => s/60); // convert to minutes
+
+  if(freqChart) freqChart.destroy();
+  if(durationChart) durationChart.destroy();
+
+  const ctxFreq = document.getElementById('freqChart').getContext('2d');
+  freqChart = new Chart(ctxFreq, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Frequency of Mood Selection',
+        data: freqData,
+        backgroundColor: ['#007bff','#5C4033','#FFC107']
+      }]
+    },
+    options: { responsive:true, plugins: { legend: { display:false } } }
+  });
+
+  const ctxDur = document.getElementById('durationChart').getContext('2d');
+  durationChart = new Chart(ctxDur, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Total Duration (minutes)',
+        data: durationData,
+        backgroundColor: ['#007bff','#5C4033','#FFC107']
+      }]
+    },
+    options: { responsive:true, plugins: { legend: { display:false } } }
+  });
+}
+
+// Save mood when leaving page
 window.addEventListener('beforeunload', () => {
-  if (currentMood) recordCurrentMood();
+  if(currentMood) recordCurrentMood();
 });
 </script>
 </body>
