@@ -1,160 +1,96 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Mood Switch with Custom Colors</title>
-<style>
-  body {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: flex-start;
-    min-height: 100vh;
-    margin: 0;
-    font-family: Arial, sans-serif;
-    transition: background-color 0.5s;
-    color: white;
-    text-align: center;
-    padding: 20px;
-  }
-  h1 { font-size: 2rem; margin-bottom: 10px; }
-  #timer { font-size: 2rem; margin-bottom: 20px; }
-  #moodImage {
-    width: 200px;
-    height: 200px;
-    margin-bottom: 20px;
-    border-radius: 15px;
-    object-fit: cover;
-  }
-  .buttons {
-    display: flex;
-    gap: 20px;
-    flex-wrap: wrap;
-    justify-content: center;
-    margin-bottom: 30px;
-  }
-  button {
-    padding: 20px 50px;
-    font-size: 1.3rem;
-    border: none;
-    border-radius: 15px;
-    cursor: pointer;
-    transition: transform 0.2s;
-  }
-  button:active { transform: scale(0.95); }
-  .blue { background-color: #007bff; color: white; } /* Positive */
-  .brown { background-color: #5C4033; color: white; } /* Angry/Negative */
-  .yellow { background-color: #FFC107; color: black; } /* Neutral */
-  .reset { background-color: #6c757d; color: white; } /* Reset Timer & Log */
-  #log {
-    width: 100%;
-    max-width: 400px;
-    text-align: left;
-    background: rgba(0,0,0,0.2);
-    padding: 15px;
-    border-radius: 10px;
-    max-height: 300px;
-    overflow-y: auto;
-  }
-  #log h2 { margin-top: 0; font-size: 1.2rem; }
-</style>
-</head>
-<body>
-  <h1 id="moodText">Choose Your Mood</h1>
-  <img id="moodImage" src="" alt="Mood Image">
-  <div id="timer">00:00</div>
-
-  <div class="buttons">
-    <button class="blue" onclick="setMood('positive')">Positive</button>
-    <button class="brown" onclick="setMood('negative')">Angry/Negative</button>
-    <button class="yellow" onclick="setMood('neutral')">Neutral</button>
-    <button class="reset" onclick="resetAll()">Reset Timer & Log</button>
-  </div>
-
-  <div id="log">
-    <h2>Mood Log (last 10)</h2>
-    <ul id="logList"></ul>
-    <h2>Cumulative Time</h2>
-    <ul>
-      <li id="positiveTime">Positive: 00:00</li>
-      <li id="negativeTime">Angry/Negative: 00:00</li>
-      <li id="neutralTime">Neutral: 00:00</li>
-    </ul>
-  </div>
-
 <script>
 let currentMood = null;
 let seconds = 0;
 let timerInterval;
+let lastUpdateTime = null;
 
-// Image URLs (replace with preferred images)
 const moodImages = {
-  positive: 'https://4kwallpapers.com/images/walls/thumbs_3t/21426.jpg', // Captain America
-  negative: 'https://images6.alphacoders.com/917/thumb-1920-917631.png', // Thanos
-  neutral: 'https://images.alphacoders.com/699/thumb-1920-699582.jpg'   // Doctor Strange
+  positive: 'https://4kwallpapers.com/images/walls/thumbs_3t/21426.jpg',
+  negative: 'https://images6.alphacoders.com/917/thumb-1920-917631.png',
+  neutral: 'https://images.alphacoders.com/699/thumb-1920-699582.jpg'
 };
 
-// Load previous log and cumulative time
 let moodLog = JSON.parse(localStorage.getItem('moodLog')) || [];
 let cumulativeTime = JSON.parse(localStorage.getItem('cumulativeTime')) || { positive: 0, negative: 0, neutral: 0 };
 const logList = document.getElementById('logList');
 renderLog();
 renderCumulative();
 
+// 🔹 Restore previous mood and timer when reloading
+window.onload = () => {
+  const savedMood = localStorage.getItem('currentMood');
+  const savedStart = localStorage.getItem('moodStartTime');
+  if (savedMood && savedStart) {
+    currentMood = savedMood;
+    const elapsed = Math.floor((Date.now() - parseInt(savedStart)) / 1000);
+    seconds = elapsed;
+    updateMoodAppearance(savedMood);
+    startTimer(); // resume visible timer
+  }
+};
+
 function setMood(mood) {
   // Record previous mood if exists
   if(currentMood) {
-    moodLog.push({
-      mood: currentMood,
-      duration: seconds,
-      timestamp: new Date().toLocaleString()
-    });
-    cumulativeTime[currentMood] += seconds;
-    saveData();
+    recordCurrentMood();
   }
 
   // Update current mood
   currentMood = mood;
-  const colors = { positive:'#007bff', negative:'#5C4033', neutral:'#FFC107' };
-  document.body.style.backgroundColor = colors[mood];
+  localStorage.setItem('currentMood', mood);
+  localStorage.setItem('moodStartTime', Date.now().toString());
 
-  const texts = { positive:'Positive 😊', negative:'Angry/Negative ⚡', neutral:'Neutral ☀️' };
-  document.getElementById('moodText').textContent = texts[mood];
+  updateMoodAppearance(mood);
 
-  document.getElementById('moodImage').src = moodImages[mood];
-
-  // Reset timer
   seconds = 0;
-  document.getElementById('timer').textContent = "00:00";
+  startTimer();
+}
 
+function updateMoodAppearance(mood) {
+  const colors = { positive:'#007bff', negative:'#5C4033', neutral:'#FFC107' };
+  const texts = { positive:'Positive 😊', negative:'Angry/Negative ⚡', neutral:'Neutral ☀️' };
+  document.body.style.backgroundColor = colors[mood];
+  document.getElementById('moodText').textContent = texts[mood];
+  document.getElementById('moodImage').src = moodImages[mood];
+}
+
+function startTimer() {
   if(timerInterval) clearInterval(timerInterval);
   timerInterval = setInterval(() => {
-    seconds++;
+    const start = parseInt(localStorage.getItem('moodStartTime'));
+    const elapsed = Math.floor((Date.now() - start) / 1000);
+    seconds = elapsed;
     const mins = String(Math.floor(seconds / 60)).padStart(2,'0');
     const secs = String(seconds % 60).padStart(2,'0');
     document.getElementById('timer').textContent = `${mins}:${secs}`;
   }, 1000);
 }
 
-// Reset timer AND clear log and cumulative data
+function recordCurrentMood() {
+  const start = parseInt(localStorage.getItem('moodStartTime'));
+  const duration = Math.floor((Date.now() - start) / 1000);
+  moodLog.push({
+    mood: currentMood,
+    duration,
+    timestamp: new Date().toLocaleString()
+  });
+  cumulativeTime[currentMood] += duration;
+  saveData();
+}
+
 function resetAll() {
+  if(timerInterval) clearInterval(timerInterval);
   seconds = 0;
   document.getElementById('timer').textContent = "00:00";
-
   currentMood = null;
   document.getElementById('moodText').textContent = "Choose Your Mood";
   document.getElementById('moodImage').src = "";
-
-  // Clear log and cumulative time
+  document.body.style.backgroundColor = "";
   moodLog = [];
   cumulativeTime = { positive: 0, negative: 0, neutral: 0 };
-  localStorage.removeItem('moodLog');
-  localStorage.removeItem('cumulativeTime');
+  localStorage.clear();
   renderLog();
   renderCumulative();
-
-  if(timerInterval) clearInterval(timerInterval);
 }
 
 function saveData() {
@@ -187,19 +123,10 @@ function formatTime(seconds) {
   return `${mins}:${secs}`;
 }
 
-// Save current mood time if leaving page
+// 🔹 Save current mood’s data before closing
 window.addEventListener('beforeunload', () => {
   if(currentMood) {
-    cumulativeTime[currentMood] += seconds;
-    moodLog.push({
-      mood: currentMood,
-      duration: seconds,
-      timestamp: new Date().toLocaleString()
-    });
-    saveData();
+    recordCurrentMood();
   }
 });
 </script>
-</body>
-</html>
-
