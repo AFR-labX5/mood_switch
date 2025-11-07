@@ -3,205 +3,190 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Mood Switch – Counters & Histograms</title>
+<title>Emotion Tracker Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
   body {
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: flex-start;
-    min-height: 100vh;
-    margin: 0;
     font-family: Arial, sans-serif;
-    transition: background-color 0.5s;
     color: white;
     text-align: center;
     padding: 20px;
+    min-height: 100vh;
+    transition: background-color 0.5s;
   }
   h1 { font-size: 2rem; margin-bottom: 10px; }
-  #timer { font-size: 2rem; margin-bottom: 20px; }
+  #timer, #startTimestamp { font-size: 1.2rem; margin-bottom: 10px; }
   #moodImage {
     width: 200px;
     height: 200px;
     margin-bottom: 20px;
     border-radius: 15px;
     object-fit: cover;
+    transition: filter 0.3s;
   }
-  .buttons {
-    display: flex;
-    gap: 20px;
-    flex-wrap: wrap;
-    justify-content: center;
-    margin-bottom: 20px;
-  }
+  .buttons { display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; justify-content:center; }
   button {
-    padding: 20px 50px;
-    font-size: 1.3rem;
+    padding: 15px 35px;
+    font-size: 1rem;
     border: none;
     border-radius: 15px;
     cursor: pointer;
     transition: transform 0.2s;
   }
   button:active { transform: scale(0.95); }
-  .blue { background-color: #007bff; color: white; }    /* Positive */
-  .brown { background-color: #5C4033; color: white; }   /* Angry/Negative */
-  .yellow { background-color: #FFC107; color: black; }  /* Neutral */
-  .reset { background-color: #6c757d; color: white; }   /* Reset */
+  .positive { background-color: #007bff; color: white; }
+  .anger { background-color: #B22222; color: white; }
+  .negative { background-color: #333333; color: white; }
+  .fear { background-color: #555555; color: white; }
+  .sad { background-color: #87CEEB; color: black; }
+  .tired { background-color: #C19A6B; color: black; }
+  .neutral { background-color: #FFC107; color: black; }
+  .reset { background-color: #6c757d; color: white; }
   #log {
     width: 100%;
-    max-width: 500px;
-    text-align: left;
+    max-width: 600px;
     background: rgba(0,0,0,0.2);
     padding: 15px;
     border-radius: 10px;
-    max-height: 200px;
+    text-align: left;
+    max-height: 250px;
     overflow-y: auto;
     margin-bottom: 20px;
   }
-  #log h2 { margin-top: 0; font-size: 1.2rem; }
-  canvas { max-width: 500px; margin-bottom: 30px; background: rgba(255,255,255,0.1); border-radius: 10px; padding: 10px; }
+  canvas { max-width: 600px; margin-bottom: 30px; background: rgba(255,255,255,0.1); border-radius: 10px; padding:10px; }
 </style>
 </head>
 <body>
+
 <h1 id="moodText">Choose Your Mood</h1>
+<div id="startTimestamp">Start Time: —</div>
 <img id="moodImage" src="" alt="Mood Image">
 <div id="timer">00:00</div>
 
 <div class="buttons">
-  <button class="blue" onclick="setMood('positive')">Positive</button>
-  <button class="brown" onclick="setMood('negative')">Angry/Negative</button>
-  <button class="yellow" onclick="setMood('neutral')">Neutral</button>
-  <button class="reset" onclick="resetAll()">Reset Timer & Log</button>
+  <button class="positive" onclick="setMood('positive')">Positive</button>
+  <button class="anger" onclick="setMood('anger')">Anger</button>
+  <button class="negative" onclick="setMood('negative')">Negative</button>
+  <button class="fear" onclick="setMood('fear')">Fear</button>
+  <button class="sad" onclick="setMood('sad')">Sad</button>
+  <button class="tired" onclick="setMood('tired')">Tired</button>
+  <button class="neutral" onclick="setMood('neutral')">Neutral</button>
+  <button class="reset" onclick="resetAll()">Reset All</button>
 </div>
 
 <div id="log">
-  <h2>Mood Log (last 10)</h2>
+  <h2>Last 10 Mood Sessions</h2>
   <ul id="logList"></ul>
   <h2>Cumulative Time</h2>
-  <ul>
-    <li id="positiveTime">Positive: 00:00</li>
-    <li id="negativeTime">Angry/Negative: 00:00</li>
-    <li id="neutralTime">Neutral: 00:00</li>
-  </ul>
-  <h2>Button Press Count</h2>
-  <ul>
-    <li id="positiveCount">Positive: 0</li>
-    <li id="negativeCount">Angry/Negative: 0</li>
-    <li id="neutralCount">Neutral: 0</li>
-  </ul>
+  <ul id="timeList"></ul>
+  <h2>Button Count</h2>
+  <ul id="countList"></ul>
 </div>
 
-<h2>Frequency Histogram</h2>
+<h2>Frequency (%)</h2>
 <canvas id="freqChart"></canvas>
-
-<h2>Duration Histogram</h2>
+<h2>Duration (%)</h2>
 <canvas id="durationChart"></canvas>
 
 <script>
 let currentMood = null;
-let seconds = 0;
-let timerInterval;
+let startTime = null;
+let timerInterval = null;
 
-const moodImages = {
-  positive: 'https://4kwallpapers.com/images/walls/thumbs_3t/21426.jpg',
-  negative: 'https://images6.alphacoders.com/917/thumb-1920-917631.png',
-  neutral: 'https://images.alphacoders.com/699/thumb-1920-699582.jpg'
+const moods = {
+  positive: { color:'#007bff', text:'Positive 😊', image:'https://4kwallpapers.com/images/walls/thumbs_3t/21426.jpg' },
+  anger: { color:'#B22222', text:'Anger 🔥', image:'https://images6.alphacoders.com/917/thumb-1920-917631.png' },
+  negative: { color:'#333333', text:'Negative ⚡', image:'https://static.wixstatic.com/media/ae8a21_eb5dbbfd9f09434d963154d84a20bb01~mv2.jpg/v1/crop/x_0,y_3,w_226,h_274/fill/w_316,h_382,al_c,lg_1,q_80,enc_avif,quality_auto/Pepe_resized.jpg', blur:true },
+  fear: { color:'#555555', text:'Fear 😨', image:'https://wallpapers.com/images/high/shaggy-in-a-flying-hovercraft-from-scooby-doo-animated-series-lezgt5jujj84ywj1.webp' },
+  sad: { color:'#87CEEB', text:'Sad 😢', image:'https://s1.bwallpapers.com/thumbs2/2014/03/06/the-simpsons-free-backgrounds_103841965.jpg' },
+  tired: { color:'#C19A6B', text:'Tired 😴', image:'https://static01.nyt.com/images/2022/01/29/autossell/clip-2/clip-2-superJumbo-v3.jpg' },
+  neutral: { color:'#FFC107', text:'Neutral ☀️', image:'https://images.alphacoders.com/699/thumb-1920-699582.jpg' }
 };
 
-// Load log, cumulative time, and counters
 let moodLog = JSON.parse(localStorage.getItem('moodLog')) || [];
-let cumulativeTime = JSON.parse(localStorage.getItem('cumulativeTime')) || { positive:0, negative:0, neutral:0 };
-let moodCount = JSON.parse(localStorage.getItem('moodCount')) || { positive:0, negative:0, neutral:0 };
+let cumulativeTime = JSON.parse(localStorage.getItem('cumulativeTime')) || Object.fromEntries(Object.keys(moods).map(k=>[k,0]));
+let moodCount = JSON.parse(localStorage.getItem('moodCount')) || Object.fromEntries(Object.keys(moods).map(k=>[k,0]));
 
-// Restore previous mood
 window.onload = () => {
   const savedMood = localStorage.getItem('currentMood');
-  const savedStart = localStorage.getItem('moodStartTime');
-  if (savedMood && savedStart) {
+  const savedStart = parseInt(localStorage.getItem('moodStartTime'));
+  if(savedMood && savedStart) {
     currentMood = savedMood;
-    seconds = Math.floor((Date.now() - parseInt(savedStart)) / 1000);
-    updateMoodAppearance(savedMood);
+    startTime = savedStart;
+    document.getElementById('startTimestamp').textContent = `Start Time: ${new Date(startTime).toLocaleString()}`;
+    updateMoodAppearance(currentMood);
     startTimer();
   }
   renderAll();
 };
 
-// -------------------- Mood Functions --------------------
 function setMood(mood) {
   if(currentMood) recordCurrentMood();
-
-  // Update current mood
   currentMood = mood;
-  localStorage.setItem('currentMood', mood);
-  localStorage.setItem('moodStartTime', Date.now().toString());
-
-  // Update button press counter
+  startTime = Date.now();
+  localStorage.setItem('currentMood', currentMood);
+  localStorage.setItem('moodStartTime', startTime);
+  document.getElementById('startTimestamp').textContent = `Start Time: ${new Date(startTime).toLocaleString()}`;
   moodCount[mood]++;
-  localStorage.setItem('moodCount', JSON.stringify(moodCount));
-
   updateMoodAppearance(mood);
-
-  seconds = 0;
   startTimer();
+  saveAll();
   renderAll();
 }
 
 function updateMoodAppearance(mood) {
-  const colors = { positive:'#007bff', negative:'#5C4033', neutral:'#FFC107' };
-  const texts = { positive:'Positive 😊', negative:'Angry/Negative ⚡', neutral:'Neutral ☀️' };
-  document.body.style.backgroundColor = colors[mood];
-  document.getElementById('moodText').textContent = texts[mood];
-  document.getElementById('moodImage').src = moodImages[mood];
+  const m = moods[mood];
+  document.body.style.backgroundColor = m.color;
+  document.getElementById('moodText').textContent = m.text;
+  const img = document.getElementById('moodImage');
+  img.src = m.image;
+  img.style.filter = m.blur ? 'blur(4px)' : 'none';
 }
 
 function startTimer() {
   if(timerInterval) clearInterval(timerInterval);
   timerInterval = setInterval(() => {
-    const start = parseInt(localStorage.getItem('moodStartTime'));
-    seconds = Math.floor((Date.now() - start) / 1000);
-    const mins = String(Math.floor(seconds / 60)).padStart(2,'0');
-    const secs = String(seconds % 60).padStart(2,'0');
-    document.getElementById('timer').textContent = `${mins}:${secs}`;
+    const elapsed = Math.floor((Date.now() - startTime)/1000);
+    document.getElementById('timer').textContent = formatTime(elapsed);
+    renderCharts();
   }, 1000);
 }
 
 function recordCurrentMood() {
-  const start = parseInt(localStorage.getItem('moodStartTime'));
-  const duration = Math.floor((Date.now() - start) / 1000);
-  moodLog.push({ mood: currentMood, duration, timestamp: new Date().toLocaleString() });
-  cumulativeTime[currentMood] += duration;
+  const elapsed = Math.floor((Date.now() - startTime)/1000);
+  moodLog.push({ mood: currentMood, duration: elapsed, timestamp: new Date(startTime).toLocaleString() });
+  cumulativeTime[currentMood] += elapsed;
   saveAll();
 }
 
-// -------------------- Reset --------------------
 function resetAll() {
   if(timerInterval) clearInterval(timerInterval);
-  seconds = 0;
   currentMood = null;
+  startTime = null;
   document.getElementById('timer').textContent = "00:00";
   document.getElementById('moodText').textContent = "Choose Your Mood";
   document.getElementById('moodImage').src = "";
   document.body.style.backgroundColor = "";
-
+  document.getElementById('startTimestamp').textContent = "Start Time: —";
   moodLog = [];
-  cumulativeTime = { positive:0, negative:0, neutral:0 };
-  moodCount = { positive:0, negative:0, neutral:0 };
+  cumulativeTime = Object.fromEntries(Object.keys(moods).map(k=>[k,0]));
+  moodCount = Object.fromEntries(Object.keys(moods).map(k=>[k,0]));
   localStorage.clear();
   renderAll();
 }
 
-// -------------------- Render & Save --------------------
 function saveAll() {
   localStorage.setItem('moodLog', JSON.stringify(moodLog));
   localStorage.setItem('cumulativeTime', JSON.stringify(cumulativeTime));
   localStorage.setItem('moodCount', JSON.stringify(moodCount));
-  renderAll();
 }
 
 function renderAll() {
   renderLog();
-  renderCumulative();
+  renderTime();
   renderCount();
   renderCharts();
 }
@@ -209,25 +194,31 @@ function renderAll() {
 function renderLog() {
   const logList = document.getElementById('logList');
   logList.innerHTML = '';
-  moodLog.slice(-10).reverse().forEach(entry => {
+  moodLog.slice(-10).reverse().forEach(e => {
     const li = document.createElement('li');
-    const mins = String(Math.floor(entry.duration / 60)).padStart(2,'0');
-    const secs = String(entry.duration % 60).padStart(2,'0');
-    li.textContent = `[${entry.timestamp}] ${entry.mood.toUpperCase()} – ${mins}:${secs}`;
+    li.textContent = `[${e.timestamp}] ${e.mood.toUpperCase()} – ${formatTime(e.duration)}`;
     logList.appendChild(li);
   });
 }
 
-function renderCumulative() {
-  document.getElementById('positiveTime').textContent = `Positive: ${formatTime(cumulativeTime.positive)}`;
-  document.getElementById('negativeTime').textContent = `Angry/Negative: ${formatTime(cumulativeTime.negative)}`;
-  document.getElementById('neutralTime').textContent = `Neutral: ${formatTime(cumulativeTime.neutral)}`;
+function renderTime() {
+  const timeList = document.getElementById('timeList');
+  timeList.innerHTML = '';
+  for(const mood in cumulativeTime) {
+    const li = document.createElement('li');
+    li.textContent = `${mood.charAt(0).toUpperCase()+mood.slice(1)}: ${formatTime(cumulativeTime[mood])}`;
+    timeList.appendChild(li);
+  }
 }
 
 function renderCount() {
-  document.getElementById('positiveCount').textContent = `Positive: ${moodCount.positive}`;
-  document.getElementById('negativeCount').textContent = `Angry/Negative: ${moodCount.negative}`;
-  document.getElementById('neutralCount').textContent = `Neutral: ${moodCount.neutral}`;
+  const countList = document.getElementById('countList');
+  countList.innerHTML = '';
+  for(const mood in moodCount) {
+    const li = document.createElement('li');
+    li.textContent = `${mood.charAt(0).toUpperCase()+mood.slice(1)}: ${moodCount[mood]}`;
+    countList.appendChild(li);
+  }
 }
 
 function formatTime(seconds) {
@@ -236,53 +227,32 @@ function formatTime(seconds) {
   return `${mins}:${secs}`;
 }
 
-// -------------------- Charts --------------------
 let freqChart, durationChart;
 function renderCharts() {
-  const labels = ['Positive', 'Angry/Negative', 'Neutral'];
-  const freqData = [moodCount.positive, moodCount.negative, moodCount.neutral];
-  const durationData = [
-    cumulativeTime.positive,
-    cumulativeTime.negative,
-    cumulativeTime.neutral
-  ].map(s => s/60); // convert to minutes
-
+  const labels = Object.keys(moods).map(k => k.charAt(0).toUpperCase()+k.slice(1));
+  const freqVals = Object.values(moodCount);
+  const durVals = Object.values(cumulativeTime);
+  const totalF = freqVals.reduce((a,b)=>a+b,0)||1;
+  const totalD = durVals.reduce((a,b)=>a+b,0)||1;
+  const freqPct = freqVals.map(v=>((v/totalF)*100).toFixed(1));
+  const durPct = durVals.map(v=>((v/totalD)*100).toFixed(1));
+  const colors = Object.values(moods).map(m=>m.color);
   if(freqChart) freqChart.destroy();
   if(durationChart) durationChart.destroy();
-
-  const ctxFreq = document.getElementById('freqChart').getContext('2d');
-  freqChart = new Chart(ctxFreq, {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [{
-        label: 'Frequency of Mood Selection',
-        data: freqData,
-        backgroundColor: ['#007bff','#5C4033','#FFC107']
-      }]
-    },
-    options: { responsive:true, plugins: { legend: { display:false } } }
+  freqChart = new Chart(document.getElementById('freqChart').getContext('2d'), {
+    type:'bar',
+    data:{ labels, datasets:[{ label:'Frequency (%)', data: freqPct, backgroundColor: colors }]},
+    options:{ responsive:true, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true,max:100,ticks:{callback:v=>v+'%'}}}}
   });
-
-  const ctxDur = document.getElementById('durationChart').getContext('2d');
-  durationChart = new Chart(ctxDur, {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [{
-        label: 'Total Duration (minutes)',
-        data: durationData,
-        backgroundColor: ['#007bff','#5C4033','#FFC107']
-      }]
-    },
-    options: { responsive:true, plugins: { legend: { display:false } } }
+  durationChart = new Chart(document.getElementById('durationChart').getContext('2d'), {
+    type:'bar',
+    data:{ labels, datasets:[{ label:'Duration (%)', data: durPct, backgroundColor: colors }]},
+    options:{ responsive:true, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true,max:100,ticks:{callback:v=>v+'%'}}}}
   });
 }
 
-// Save mood when leaving page
-window.addEventListener('beforeunload', () => {
-  if(currentMood) recordCurrentMood();
-});
+window.addEventListener('beforeunload', () => { if(currentMood) recordCurrentMood(); });
+
 </script>
 </body>
 </html>
